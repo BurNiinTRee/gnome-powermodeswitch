@@ -1,0 +1,9 @@
+{
+  "name": "Power Mode Switch",
+  "description": "Simple toggle for different power modes",
+  "version": 1,
+  "uuid": "powermodeswitch@muehml.eu",
+  "shell-version": [
+    "40"
+  ]
+}
