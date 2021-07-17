@@ -46,15 +46,32 @@ class Extension {
 
         this._indicator = new PanelMenu.Button(0.0, indicatorName, false);
 
+
         let icon = new St.Icon({
             gicon: new Gio.ThemedIcon({name: 'face-laugh-symbolic'}),
             style_class: 'system-status-icon'
         });
         this._icon = icon;
         this._indicator.add_child(icon);
-        this._indicator.menu.addAction('Performance Mode', this.changePerf.bind(this), null);
-        this._indicator.menu.addAction('Balanced Mode', this.changeBal.bind(this), null);
-        this._indicator.menu.addAction('Powersaver Mode', this.changePow.bind(this), null);
+        this._indicator.menu.addAction('Performance Mode', () => this.changeMode('performance'), null);
+        this._indicator.menu.addAction('Balanced Mode', () => this.changeMode('balanced'), null);
+        this._indicator.menu.addAction('Powersaver Mode', () => this.changeMode('power-saver'), null);
+
+
+
+        this._subscription_identifier = Gio.DBus.system.signal_subscribe(
+            'net.hadess.PowerProfiles',
+            'org.freedesktop.DBus.Properties',
+            'PropertiesChanged',
+            '/net/hadess/PowerProfiles',
+            null,
+            Gio.DBusSignalFlags.NONE,
+            () => {
+                this.update_icon();
+            }
+        );
+
+        this.update_icon();
 
         Main.panel.addToStatusArea(indicatorName, this._indicator);
     }
@@ -64,26 +81,49 @@ class Extension {
 
         this._indicator.destroy();
         this._indicator = null;
+        Gio.DBus.system.singal_unsubscribe(this._subscription_identifier);
     }
 
-    changePerf() {
-        this.changeMode('performance');
-        this._icon.set_gicon(this._perfIcon);
+    update_icon() {
+        Gio.DBus.system.call(
+            'net.hadess.PowerProfiles',
+            '/net/hadess/PowerProfiles',
+            'org.freedesktop.DBus.Properties',
+            'Get',
+            new GLib.Variant('(ss)', [
+                'net.hadess.PowerProfiles',
+                'ActiveProfile',
+            ]),
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (connection, res) => {
+                try {
+                    let r = connection.call_finish(res);
+                    let mode = r.get_child_value(0).get_variant().get_string()[0];
+                    switch (mode) {
+                        case 'performance':
+                            this._icon.set_gicon(this._perfIcon);
+                            break;
+                       case 'balanced':
+                           this._icon.set_gicon(this._balanceIcon);
+                           break;
+                       case 'power-saver':
+                           this._icon.set_gicon(this._powerIcon);
+                       default:
+                           break;
+                    }
+                } catch (e) {
+                    logError(e);
+                }
+            }
+        );     
     }
-    changeBal() {
-        this.changeMode('balanced');
-        this._icon.set_gicon(this._balanceIcon);
-    }
-    changePow() {
-        this.changeMode('power-saver');
-        this._icon.set_gicon(this._powerIcon);
-    }
+
 
     changeMode(mode) {
-        log(`Switching power mode ${mode}`);
-        let connection = Gio.DBus.system;
-
-        connection.call(
+        Gio.DBus.system.call(
             'net.hadess.PowerProfiles',
             '/net/hadess/PowerProfiles',
             'org.freedesktop.DBus.Properties',
@@ -100,16 +140,14 @@ class Extension {
             (connection, res) => {
                 try {
                     connection.call_finish(res);
+                    this.update_icon();
                 } catch (e) {
                     logError(e);
                 }
             }
         );
-
     }
 }
-
-
 
 function init() {
     log(`initializing ${Me.metadata.name} version ${Me.metadata.version}`);
